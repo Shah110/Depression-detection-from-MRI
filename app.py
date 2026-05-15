@@ -1,12 +1,12 @@
+import os
+import tempfile
 
+import nibabel as nib
+import numpy as np
 import streamlit as st
 import torch
 import torch.nn as nn
-import numpy as np
-import nibabel as nib
 from scipy.ndimage import zoom
-import tempfile
-import os
 
 
 class Simple3DCNN(nn.Module):
@@ -32,13 +32,13 @@ class Simple3DCNN(nn.Module):
             nn.Conv3d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm3d(64),
             nn.ReLU(),
-            nn.AdaptiveAvgPool3d(1)
+            nn.AdaptiveAvgPool3d(1),
         )
 
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Dropout(0.4),
-            nn.Linear(64, 1)
+            nn.Linear(64, 1),
         )
 
     def forward(self, x):
@@ -51,26 +51,27 @@ def resize_volume(volume, target_shape=(128, 128, 128)):
     factors = [
         target_shape[0] / volume.shape[0],
         target_shape[1] / volume.shape[1],
-        target_shape[2] / volume.shape[2]
+        target_shape[2] / volume.shape[2],
     ]
+
     return zoom(volume, factors, order=1)
 
 
 def normalize_volume(volume):
     volume = volume.astype(np.float32)
 
-    min_val = np.min(volume)
-    max_val = np.max(volume)
+    min_value = np.min(volume)
+    max_value = np.max(volume)
 
-    if max_val - min_val == 0:
+    if max_value - min_value == 0:
         return volume
 
-    return (volume - min_val) / (max_val - min_val)
+    return (volume - min_value) / (max_value - min_value)
 
 
 def preprocess_mri(file_path):
-    img = nib.load(file_path)
-    volume = img.get_fdata()
+    image = nib.load(file_path)
+    volume = image.get_fdata()
 
     if len(volume.shape) == 4:
         volume = volume[:, :, :, 0]
@@ -78,47 +79,56 @@ def preprocess_mri(file_path):
     volume = resize_volume(volume)
     volume = normalize_volume(volume)
 
+    display_volume = volume.copy()
+
     volume = np.expand_dims(volume, axis=0)
     volume = np.expand_dims(volume, axis=0)
 
-    return torch.tensor(volume, dtype=torch.float32), volume[0, 0]
+    tensor = torch.tensor(volume, dtype=torch.float32)
+
+    return tensor, display_volume
 
 
 @st.cache_resource
 def load_model():
-    model = Simple3DCNN()
     model_path = "simple_3dcnn.pth"
 
+    if not os.path.exists(model_path):
+        st.error("Model file simple_3dcnn.pth was not found.")
+        st.stop()
+
+    model = Simple3DCNN()
     state_dict = torch.load(model_path, map_location="cpu")
     model.load_state_dict(state_dict)
-
     model.eval()
+
     return model
 
 
 st.set_page_config(
-    page_title="Depressive Disorder Detection from Structural MRI",
-    layout="centered"
+    page_title="Depressive Disorder Detection Using Structural MRI",
+    page_icon="🧠",
+    layout="centered",
 )
 
 st.title("Depressive Disorder Detection Using Structural MRI")
 
 st.write(
     "Upload a T1-weighted structural MRI scan in `.nii` or `.nii.gz` format. "
-    "The model will preprocess the scan and predict whether it belongs to "
+    "The app preprocesses the scan and predicts whether it belongs to the "
     "Healthy Control or MDD class."
 )
 
 st.warning(
-    "This app is a research prototype. It is not a medical diagnosis tool."
-)
-
-uploaded_file = st.file_uploader(
-    "Upload MRI scan",
-    type=["nii", "gz"]
+    "This is a research prototype only. It is not a medical diagnosis tool."
 )
 
 model = load_model()
+
+uploaded_file = st.file_uploader(
+    "Upload MRI scan",
+    type=["nii", "gz"],
+)
 
 if uploaded_file is not None:
     suffix = ".nii.gz" if uploaded_file.name.endswith(".nii.gz") else ".nii"
@@ -136,21 +146,26 @@ if uploaded_file is not None:
             output = model(image_tensor)
             probability = torch.sigmoid(output).item()
 
-        if probability >= 0.5:
-            prediction = "MDD"
-        else:
-            prediction = "Healthy Control"
+        prediction = "MDD" if probability >= 0.5 else "Healthy Control"
 
         st.subheader("Prediction Result")
         st.write(f"Predicted Class: {prediction}")
         st.write(f"MDD Probability: {probability:.4f}")
 
-        st.subheader("Processed MRI Slice")
-        middle_slice = processed_volume[:, :, processed_volume.shape[2] // 2]
+        st.subheader("Processed MRI Preview")
+
+        slice_index = processed_volume.shape[2] // 2
+        middle_slice = processed_volume[:, :, slice_index]
+
         st.image(
             middle_slice,
             caption="Middle slice after preprocessing",
-            clamp=True
+            clamp=True,
+            use_container_width=True,
+        )
+
+        st.info(
+            "Model output is based only on structural MRI patterns learned from the training dataset."
         )
 
     except Exception as error:
