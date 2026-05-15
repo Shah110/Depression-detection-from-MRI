@@ -53,13 +53,11 @@ def resize_volume(volume, target_shape=(128, 128, 128)):
         target_shape[1] / volume.shape[1],
         target_shape[2] / volume.shape[2],
     ]
-
     return zoom(volume, factors, order=1)
 
 
 def normalize_volume(volume):
     volume = volume.astype(np.float32)
-
     min_value = np.min(volume)
     max_value = np.max(volume)
 
@@ -90,7 +88,7 @@ def preprocess_mri(file_path):
 
 
 @st.cache_resource
-def load_model():
+def load_trained_model():
     model_path = "simple_3dcnn.pth"
 
     if not os.path.exists(model_path):
@@ -115,15 +113,14 @@ st.title("Depressive Disorder Detection Using Structural MRI")
 
 st.write(
     "Upload a T1-weighted structural MRI scan in `.nii` or `.nii.gz` format. "
-    "The app preprocesses the scan and predicts whether it belongs to the "
-    "Healthy Control or MDD class."
+    "The app preprocesses the scan and predicts Healthy Control or MDD."
 )
 
 st.warning(
     "This is a research prototype only. It is not a medical diagnosis tool."
 )
 
-model = load_model()
+model = load_trained_model()
 
 uploaded_file = st.file_uploader(
     "Upload MRI scan",
@@ -162,10 +159,6 @@ if uploaded_file is not None:
             caption="Middle slice after preprocessing",
             clamp=True,
             use_container_width=True,
-        )
-
-        st.info(
-            "Model output is based only on structural MRI patterns learned from the training dataset."
         )
 
     except Exception as error:
